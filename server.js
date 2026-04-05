@@ -8,23 +8,13 @@ const paymentRoutes = require("./routes/payment");
 const { errorHandler, notFoundHandler } = require("./utils/http");
 
 const app = express();
-const corsOptions = {
-    origin: function (origin, callback) {
-        if (!origin || config.frontendOrigins.includes(origin)) {
-            callback(null, true);
-            return;
-        }
-
-        callback(new Error("Origin not allowed by CORS."));
-    },
+app.use(cors({
+    origin: config.frontendOrigins,
+    methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Authorization", "Content-Type", "X-File-Name", "X-File-Type", "X-Upload-Kind"],
     exposedHeaders: ["Content-Disposition"]
-};
-
-app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
+}));
 
 app.use(express.json({ limit: "1mb" }));
 
