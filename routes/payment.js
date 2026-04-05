@@ -6,8 +6,7 @@ const Razorpay = require("razorpay");
 const { cleanText, config } = require("../config");
 const { requireAuthenticatedUser } = require("../middleware/requireAuth");
 const {
-    requirePaymentConfigured,
-    requireRazorpayConfigured
+    requirePaymentConfigured
 } = require("../middleware/requireConfig");
 const {
     getDesignById,
@@ -21,94 +20,6 @@ const { activatePremiumMembership, ensureUserProfile } = require("../services/us
 const { asyncHandler, createHttpError } = require("../utils/http");
 
 const router = express.Router();
-
-router.post("/test/create-order", requireRazorpayConfigured, asyncHandler(async function (req, res) {
-    const description = cleanText(req.body && req.body.description) || "AJartivo Razorpay Test Payment";
-    const customerName = cleanText(req.body && req.body.customer_name);
-    const customerEmail = cleanText(req.body && req.body.customer_email).toLowerCase();
-    const amountInRupees = Number(req.body && req.body.amount);
-    const amountInPaise = Math.round(amountInRupees * 100);
-
-    if (!Number.isFinite(amountInRupees) || amountInRupees <= 0) {
-        throw createHttpError(400, "Valid amount is required.");
-    }
-
-    if (!Number.isFinite(amountInPaise) || amountInPaise < 100) {
-        throw createHttpError(400, "Minimum test amount is Rs. 1.");
-    }
-
-    const razorpay = getRazorpayClient();
-    const order = await razorpay.orders.create({
-        amount: amountInPaise,
-        currency: "INR",
-        receipt: buildTestReceipt(),
-        notes: {
-            mode: "standalone_test",
-            customer_name: customerName.slice(0, 60),
-            customer_email: customerEmail.slice(0, 80),
-            description: description.slice(0, 100)
-        }
-    });
-
-    res.json({
-        success: true,
-        key: config.razorpay.keyId,
-        order_id: cleanText(order && order.id),
-        amount: Number(order && order.amount || 0),
-        currency: cleanText(order && order.currency) || "INR",
-        description: description,
-        customer_name: customerName,
-        customer_email: customerEmail
-    });
-}));
-
-router.post("/test/verify-payment", requireRazorpayConfigured, asyncHandler(async function (req, res) {
-    const orderId = cleanText(req.body && req.body.razorpay_order_id);
-    const paymentId = cleanText(req.body && req.body.razorpay_payment_id);
-    const signature = cleanText(req.body && req.body.razorpay_signature);
-
-    if (!orderId || !paymentId || !signature) {
-        throw createHttpError(400, "Missing required payment fields.");
-    }
-
-    verifySignature(orderId, paymentId, signature);
-
-    const razorpay = getRazorpayClient();
-    const [razorpayOrder, razorpayPayment] = await Promise.all([
-        razorpay.orders.fetch(orderId),
-        razorpay.payments.fetch(paymentId)
-    ]);
-
-    if (!razorpayOrder || !razorpayPayment) {
-        throw createHttpError(400, "Unable to verify payment details.");
-    }
-
-    if (cleanText(razorpayPayment.order_id) !== orderId) {
-        throw createHttpError(400, "Payment order mismatch.");
-    }
-
-    const finalizedPayment = await capturePaymentIfNeeded(razorpay, razorpayPayment, Number(razorpayOrder.amount || 0));
-    if (!isSuccessfulPayment(finalizedPayment)) {
-        throw createHttpError(400, "Payment is not successful.");
-    }
-
-    res.json({
-        success: true,
-        test_mode: true,
-        order_id: cleanText(razorpayOrder && razorpayOrder.id),
-        payment_id: cleanText(finalizedPayment && finalizedPayment.id),
-        amount: Number(finalizedPayment && finalizedPayment.amount || razorpayOrder && razorpayOrder.amount || 0),
-        currency: cleanText(finalizedPayment && finalizedPayment.currency || razorpayOrder && razorpayOrder.currency || "INR"),
-        status: cleanText(finalizedPayment && finalizedPayment.status),
-        method: cleanText(finalizedPayment && finalizedPayment.method) || "Razorpay",
-        email: cleanText(finalizedPayment && finalizedPayment.email),
-        contact: cleanText(finalizedPayment && finalizedPayment.contact),
-        captured_at: Number(finalizedPayment && finalizedPayment.created_at)
-            ? new Date(Number(finalizedPayment.created_at) * 1000).toISOString()
-            : "",
-        notes: razorpayOrder && razorpayOrder.notes ? razorpayOrder.notes : {}
-    });
-}));
 
 router.post("/create-order", requirePaymentConfigured, requireAuthenticatedUser, asyncHandler(async function (req, res) {
     const designId = cleanText(req.body && req.body.design_id);
@@ -390,10 +301,6 @@ function safeCompare(expected, actual) {
 
 function buildReceipt(designId) {
     return `aj_${cleanText(designId)}_${Date.now()}`.slice(0, 40);
-}
-
-function buildTestReceipt() {
-    return `aj_test_${Date.now()}`.slice(0, 40);
 }
 
 function buildPremiumReceipt(userId) {
