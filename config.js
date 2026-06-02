@@ -25,6 +25,10 @@ const config = {
         keyId: cleanText(process.env.RAZORPAY_KEY_ID),
         keySecret: cleanText(process.env.RAZORPAY_KEY_SECRET)
     },
+    photoRoom: {
+        apiKey: cleanText(process.env.PHOTOROOM_API_KEY),
+        apiBaseUrl: cleanText(process.env.PHOTOROOM_API_BASE_URL) || "https://sdk.photoroom.com/v1/segment"
+    },
     r2: {
         accessKey: cleanText(process.env.R2_ACCESS_KEY),
         secretKey: cleanText(process.env.R2_SECRET_KEY),
@@ -158,6 +162,14 @@ function getRazorpayConfigurationError() {
     return "";
 }
 
+function getPhotoRoomConfigurationError() {
+    if (!config.photoRoom.apiKey) {
+        return "PHOTOROOM_API_KEY is missing on the backend.";
+    }
+
+    return "";
+}
+
 function getR2ConfigurationError() {
     if (!config.r2.accessKey) {
         return "R2_ACCESS_KEY is missing on the backend.";
@@ -239,6 +251,7 @@ module.exports = {
     ensureTrailingSeparator,
     getR2ConfigurationError,
     getRazorpayConfigurationError,
+    getPhotoRoomConfigurationError,
     getSupabaseConfigurationError,
     hasR2Config,
     hasRazorpayConfig,

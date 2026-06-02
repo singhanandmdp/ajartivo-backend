@@ -2,6 +2,20 @@
 
 This backend serves AJartivo digital designs through protected Express routes with free-user limits, premium subscriptions, and verified individual purchases.
 
+## PhotoRoom background removal
+
+This backend now proxies PhotoRoom background removal so the frontend can upload an image and receive a cutout from the server.
+
+Required env var:
+
+- `PHOTOROOM_API_KEY`
+
+Available endpoints:
+
+- `POST /remove-bg`
+- `POST /remove-background`
+- `POST /smart-remove-bg`
+
 ## What it does
 
 - Creates individual design orders from `/create-order`
@@ -21,6 +35,7 @@ This backend serves AJartivo digital designs through protected Express routes wi
 - `routes/payment.js`
 - `routes/download.js`
 - `supabaseClient.js`
+- `routes/photoRoom.js`
 
 ## Setup
 
@@ -31,6 +46,7 @@ This backend serves AJartivo digital designs through protected Express routes wi
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `RAZORPAY_KEY_ID`
    - `RAZORPAY_KEY_SECRET`
+   - `PHOTOROOM_API_KEY`
    - `PREMIUM_PLAN_PRICE`
 4. Keep your frontend on `http://127.0.0.1:5500` or add your own origin to `FRONTEND_ORIGINS`
 

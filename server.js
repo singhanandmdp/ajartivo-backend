@@ -3,6 +3,7 @@ const express = require("express");
 
 const { config, maskCredential } = require("./config");
 const adminRoutes = require("./routes/admin");
+const photoRoomRoutes = require("./routes/photoRoom");
 const downloadRoutes = require("./routes/download");
 const paymentRoutes = require("./routes/payment");
 const { errorHandler, notFoundHandler } = require("./utils/http");
@@ -28,6 +29,7 @@ app.get("/health", function (_req, res) {
 
 app.use(paymentRoutes);
 app.use(downloadRoutes);
+app.use(photoRoomRoutes);
 app.use(adminRoutes);
 
 app.use(notFoundHandler);
@@ -44,6 +46,10 @@ app.listen(config.port, function () {
         r2PublicUrl: config.r2.publicUrl,
         r2BucketName: config.r2.bucketName,
         r2AccessKey: maskCredential(config.r2.accessKey)
+    });
+    console.log("[AJartivo Backend] PhotoRoom config", {
+        photoRoomApiUrl: config.photoRoom.apiBaseUrl,
+        photoRoomApiKey: maskCredential(config.photoRoom.apiKey)
     });
     console.log("[AJartivo Backend] Allowed origins", config.frontendOrigins);
 });
