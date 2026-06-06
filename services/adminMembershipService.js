@@ -5,18 +5,77 @@ const { createHttpError } = require("../utils/http");
 async function listAdminUsers(limit) {
     const supabase = getSupabaseAdminClient();
     const maxItems = Math.min(250, Math.max(1, Number(limit || 100)));
+    const [authUsers, profiles] = await Promise.all([
+        listAuthUsers(supabase, maxItems),
+        listProfiles(supabase, maxItems)
+    ]);
 
-    const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(maxItems);
+    const profileMap = new Map();
+    profiles.forEach(function (profile) {
+        const profileId = cleanText(profile && profile.id);
+        const profileEmail = cleanText(profile && profile.email).toLowerCase();
+        if (profileId) {
+            profileMap.set(profileId, profile);
+        }
+        if (profileEmail) {
+            profileMap.set(profileEmail, profile);
+        }
+    });
 
-    if (error) {
-        throw error;
-    }
+    const mergedUsers = authUsers.map(function (authUser) {
+        const authId = cleanText(authUser && authUser.id);
+        const authEmail = cleanText(authUser && authUser.email).toLowerCase();
+        const profile = profileMap.get(authId) || profileMap.get(authEmail) || null;
 
-    return (Array.isArray(data) ? data : []).map(normalizeAdminUserRecord);
+        return normalizeAdminUserRecord({
+            ...(profile || {}),
+            id: authId || cleanText(profile && profile.id),
+            email: authEmail || cleanText(profile && profile.email),
+            name: cleanText(profile && profile.name) || buildDisplayName(authUser),
+            role: cleanText(profile && profile.role) || cleanText(authUser && authUser.user_metadata && authUser.user_metadata.role) || "user",
+            status: cleanText(profile && profile.status) || "Active",
+            created_at: cleanText(profile && profile.created_at) || cleanText(authUser && authUser.created_at) || new Date().toISOString(),
+            avatar_url: cleanText(profile && profile.avatar_url) || cleanText(authUser && authUser.user_metadata && authUser.user_metadata.avatar_url),
+            is_premium: profile ? profile.is_premium : Boolean(authUser && authUser.user_metadata && authUser.user_metadata.is_premium),
+            premium_active: profile ? profile.premium_active : Boolean(authUser && authUser.user_metadata && authUser.user_metadata.premium_active),
+            premium_expiry: cleanText(profile && profile.premium_expiry) || cleanText(authUser && authUser.user_metadata && authUser.user_metadata.premium_expiry),
+            plan_id: cleanText(profile && profile.plan_id) || cleanText(authUser && authUser.user_metadata && authUser.user_metadata.plan_id),
+            plan_name: cleanText(profile && profile.plan_name) || cleanText(authUser && authUser.user_metadata && authUser.user_metadata.plan_name),
+            active_plan_id: cleanText(profile && profile.active_plan_id) || cleanText(authUser && authUser.user_metadata && authUser.user_metadata.active_plan_id),
+            active_plan_name: cleanText(profile && profile.active_plan_name) || cleanText(authUser && authUser.user_metadata && authUser.user_metadata.active_plan_name),
+            free_download_count: Number(profile && profile.free_download_count || 0),
+            free_download_remaining: Number(profile && profile.free_download_remaining || 0),
+            weekly_premium_download_count: Number(profile && profile.weekly_premium_download_count || 0),
+            weekly_premium_remaining: Number(profile && profile.weekly_premium_remaining || 0),
+            weekly_reset_date: cleanText(profile && profile.weekly_reset_date)
+        });
+    });
+
+    const seenKeys = new Set(
+        mergedUsers.flatMap(function (item) {
+            return [cleanText(item && item.id), cleanText(item && item.email).toLowerCase()].filter(Boolean);
+        })
+    );
+
+    profiles.forEach(function (profile) {
+        const profileId = cleanText(profile && profile.id);
+        const profileEmail = cleanText(profile && profile.email).toLowerCase();
+        const cacheKey = profileId || profileEmail;
+
+        if (!cacheKey || seenKeys.has(cacheKey)) {
+            return;
+        }
+
+        mergedUsers.push(normalizeAdminUserRecord({
+            ...profile,
+            id: profileId,
+            email: profileEmail,
+            name: cleanText(profile && profile.name) || buildDisplayName({ email: profileEmail, user_metadata: {} }),
+            created_at: cleanText(profile && profile.created_at) || new Date().toISOString()
+        }));
+    });
+
+    return mergedUsers;
 }
 
 async function listPremiumPlans() {
@@ -152,6 +211,50 @@ async function findProfileById(supabase, userId) {
     return byId.data || null;
 }
 
+async function listAuthUsers(supabase, maxItems) {
+    const pageSize = Math.min(100, Math.max(1, Number(maxItems || 100)));
+    const users = [];
+    let page = 1;
+
+    while (users.length < maxItems) {
+        const response = await supabase.auth.admin.listUsers({
+            page: page,
+            perPage: pageSize
+        });
+
+        if (response.error) {
+            throw response.error;
+        }
+
+        const batch = Array.isArray(response && response.data && response.data.users)
+            ? response.data.users
+            : [];
+
+        users.push(...batch);
+
+        if (batch.length < pageSize) {
+            break;
+        }
+
+        page += 1;
+    }
+
+    return users.slice(0, maxItems);
+}
+
+async function listProfiles(supabase, maxItems) {
+    const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .limit(maxItems);
+
+    if (error) {
+        throw error;
+    }
+
+    return Array.isArray(data) ? data : [];
+}
+
 async function updateProfileWithFallback(supabase, profileId, payload) {
     return mutateProfileWithFallback(function (nextPayload) {
         return supabase
@@ -237,6 +340,11 @@ function normalizeAdminUserRecord(record) {
         weekly_premium_remaining: weeklyPremiumRemaining,
         weekly_reset_date: cleanText(item.weekly_reset_date)
     };
+}
+
+function buildDisplayName(authUser) {
+    const metadata = authUser && authUser.user_metadata ? authUser.user_metadata : {};
+    return cleanText(metadata.full_name || metadata.display_name || metadata.name) || cleanText(authUser && authUser.email).split("@")[0] || "User";
 }
 
 module.exports = {
