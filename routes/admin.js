@@ -4,6 +4,13 @@ const { cleanText, config, isHttpUrl } = require("../config");
 const { requireR2Configured, requireSupabaseConfigured } = require("../middleware/requireConfig");
 const { requireAdminUser, requireAuthenticatedUser } = require("../middleware/requireAuth");
 const { listLatestDesigns, saveDesignRecord } = require("../services/adminDesignService");
+const {
+    grantPremiumMembership,
+    listAdminUsers,
+    listPremiumPlans,
+    revokePremiumMembership,
+    setUserBanState
+} = require("../services/adminMembershipService");
 const { inferCategory, isAllowedUploadExtension, uploadBufferToR2 } = require("../services/r2Service");
 const { asyncHandler, createHttpError } = require("../utils/http");
 const { parseMultipartRequest } = require("../utils/multipart");
@@ -23,6 +30,73 @@ router.get("/designs", requireSupabaseConfigured, asyncHandler(async function (r
     res.json({
         success: true,
         designs: items
+    });
+}));
+
+router.get("/plans", asyncHandler(async function (_req, res) {
+    const plans = await listPremiumPlans();
+
+    res.json({
+        success: true,
+        plans: plans
+    });
+}));
+
+router.get("/admin/users", requireSupabaseConfigured, requireAuthenticatedUser, requireAdminUser, asyncHandler(async function (req, res) {
+    const items = await listAdminUsers(req.query && req.query.limit);
+
+    res.json({
+        success: true,
+        users: items
+    });
+}));
+
+router.post("/admin/subscriptions/grant", requireSupabaseConfigured, requireAuthenticatedUser, requireAdminUser, asyncHandler(async function (req, res) {
+    const userId = cleanText(req.body && req.body.user_id);
+    const planId = cleanText(req.body && req.body.plan_id);
+
+    if (!userId) {
+        throw createHttpError(400, "User ID is required.");
+    }
+
+    const user = await grantPremiumMembership(userId, planId);
+
+    res.json({
+        success: true,
+        user: user
+    });
+}));
+
+router.post("/admin/subscriptions/revoke", requireSupabaseConfigured, requireAuthenticatedUser, requireAdminUser, asyncHandler(async function (req, res) {
+    const userId = cleanText(req.body && req.body.user_id);
+
+    if (!userId) {
+        throw createHttpError(400, "User ID is required.");
+    }
+
+    const profile = await revokePremiumMembership(userId);
+
+    res.json({
+        success: true,
+        result: {
+            profile: profile
+        }
+    });
+}));
+
+router.post("/admin/users/:id/ban", requireSupabaseConfigured, requireAuthenticatedUser, requireAdminUser, asyncHandler(async function (req, res) {
+    const userId = cleanText(req.params && req.params.id);
+    const isBanned = req.body && req.body.is_banned === true;
+
+    if (!userId) {
+        throw createHttpError(400, "User ID is required.");
+    }
+
+    const user = await setUserBanState(userId, isBanned);
+
+    res.json({
+        success: true,
+        user: user
     });
 }));
 
