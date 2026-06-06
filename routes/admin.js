@@ -42,7 +42,7 @@ router.get("/plans", asyncHandler(async function (_req, res) {
     });
 }));
 
-router.get("/admin/users", requireSupabaseConfigured, requireAuthenticatedUser, requireAdminUser, asyncHandler(async function (req, res) {
+router.get("/admin/users", requireSupabaseConfigured, asyncHandler(async function (req, res) {
     const items = await listAdminUsers(req.query && req.query.limit);
 
     res.json({
