@@ -1,92 +1,194 @@
-# AJartivo Secure Delivery Backend
+# AJartivo Backend
 
-This backend serves AJartivo digital designs through protected Express routes with free-user limits, premium subscriptions, and verified individual purchases.
+This backend now supports a professional Hugging Face Space integration for background removal.
 
-## PhotoRoom background removal
+## What is included
 
-This backend now proxies PhotoRoom background removal so the frontend can upload an image and receive a cutout from the server.
+- `POST /api/remove-bg`
+- `multer` image upload handling
+- `@gradio/client` integration with `mr-singh/bg-remover`
+- JSON response with processed image URL and data URL
+- MIME/type validation and file-size limits
+- CORS for local and production frontend origins
+- Existing PhotoRoom route kept as a backup for future use
 
-Required env var:
+## Folder structure
 
-- `PHOTOROOM_API_KEY`
+```text
+backend/
+  api/
+    index.js
+  middleware/
+    requireConfig.js
+  routes/
+    removeBg.js
+    photoRoom.js
+    ...
+  services/
+    hfRemoveBgService.js
+  utils/
+    http.js
+    imageValidation.js
+  server.js
+  config.js
+  .env
+  .env.example
+  package.json
+```
 
-Available endpoints:
+## Environment variables
 
-- `POST /remove-bg`
-- `POST /remove-background`
-- `POST /smart-remove-bg`
+Set these in `backend/.env` or in Render environment settings:
 
-## What it does
+```env
+PORT=5000
+FRONTEND_ORIGINS=http://127.0.0.1:5500,http://localhost:5500,https://your-vercel-frontend.vercel.app
 
-- Creates individual design orders from `/create-order`
-- Verifies design payments on `/verify-payment`
-- Creates premium subscription orders from `/create-premium-order`
-- Verifies premium subscription payments on `/verify-premium-payment`
-- Returns user account summary from `/account/summary`
-- Returns download access decisions from `/access/design/:id`
-- Inserts verified purchases into the `purchases` table in Supabase
-- Updates premium membership in the `users` table
-- Serves files only through `/download/:id`
-- Blocks downloads with `403` when account rules do not allow the design
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+RAZORPAY_KEY_ID=
+RAZORPAY_KEY_SECRET=
+PHOTOROOM_API_KEY=
 
-## Required files
+HF_REMOVE_BG_SPACE_ID=mr-singh/bg-remover
+HF_REMOVE_BG_API_NAME=/remove_bg
+HF_REMOVE_BG_MAX_FILE_SIZE_MB=12
+HF_TOKEN=
 
-- `server.js`
-- `routes/payment.js`
-- `routes/download.js`
-- `supabaseClient.js`
-- `routes/photoRoom.js`
+R2_ACCESS_KEY=
+R2_SECRET_KEY=
+R2_BUCKET=
+R2_ENDPOINT=
+R2_PUBLIC_URL=
+```
 
-## Setup
+Notes:
 
-1. Open `backend/.env.example`
-2. Copy it to `backend/.env`
-3. Fill in:
-   - `SUPABASE_URL`
-   - `SUPABASE_SERVICE_ROLE_KEY`
-   - `RAZORPAY_KEY_ID`
-   - `RAZORPAY_KEY_SECRET`
-   - `PHOTOROOM_API_KEY`
-   - `PREMIUM_PLAN_PRICE`
-4. Keep your frontend on `http://127.0.0.1:5500` or add your own origin to `FRONTEND_ORIGINS`
+- `HF_TOKEN` is optional for the public Space, but keep it ready if you ever make the Space private.
+- `PHOTOROOM_API_KEY` stays in the project as a backup flow.
 
-## Install and run
+## Install
 
 ```bash
 cd backend
 npm install
+```
+
+The new dependencies are:
+
+- `@gradio/client`
+- `multer`
+
+## Run locally
+
+```bash
 npm start
 ```
 
 Health check:
 
 ```bash
-http://localhost:5000/health
+GET http://localhost:5000/health
 ```
 
-## Frontend flow
+## API
 
-1. User logs in with Supabase Auth
-2. Frontend reads account summary and checks `/access/design/:id`
-3. User either downloads directly, buys a design, or upgrades to premium
-4. On payment success, frontend calls the matching verify endpoint
-5. Backend verifies the Razorpay signature and updates `public.purchases` or `public.users`
-6. File is downloaded only through `GET /download/:id`
+### `POST /api/remove-bg`
 
-## File delivery
+Request:
 
-- Local files should live inside the project `downloads/` folder
-- Store the relative path in your design row as `download_link`
-- Example: `downloads/poster-pack.zip`
+- `Content-Type: multipart/form-data`
+- field name: `image`
 
-## Supabase notes
+Example using `FormData`:
 
-- Use the service role key only in the backend
-- Do not put the service role key in frontend JavaScript
-- The frontend can use the publishable key for auth/session handling
-- RLS should stay enabled on `users`, `purchases`, and `designs`
-- Backend inserts and updates work because the service role bypasses RLS
+```js
+const formData = new FormData();
+formData.append("image", file);
 
-## Recommended SQL
+const response = await fetch("https://your-render-backend.onrender.com/api/remove-bg", {
+  method: "POST",
+  body: formData
+});
 
-Run `supabase/marketplace_schema.sql` in the Supabase SQL editor.
+const data = await response.json();
+console.log(data);
+```
+
+Success response:
+
+```json
+{
+  "success": true,
+  "message": "Background removed successfully.",
+  "source": "huggingface-space",
+  "spaceId": "mr-singh/bg-remover",
+  "apiName": "/remove_bg",
+  "output": {
+    "imageUrl": "https://...",
+    "imageDataUrl": "data:image/png;base64,...",
+    "mimeType": "image/png",
+    "fileName": "sample.png",
+    "size": 123456
+  }
+}
+```
+
+## Frontend usage
+
+In your frontend, send the file as `image`:
+
+```js
+const formData = new FormData();
+formData.append("image", fileInput.files[0]);
+
+const response = await fetch("https://your-render-backend.onrender.com/api/remove-bg", {
+  method: "POST",
+  body: formData
+});
+
+const payload = await response.json();
+
+if (!response.ok) {
+  throw new Error(payload.error || "Background removal failed.");
+}
+
+const previewUrl = payload.output.imageDataUrl || payload.output.imageUrl;
+imagePreview.src = previewUrl;
+```
+
+If you need the image for canvas work, prefer `imageDataUrl` because it stays same-origin safe.
+
+## Deployment on Render
+
+1. Create a new Render Web Service.
+2. Set the root directory to `Backend Services/backend`.
+3. Build command:
+
+```bash
+npm install
+```
+
+4. Start command:
+
+```bash
+npm start
+```
+
+5. Add the environment variables from the section above.
+6. Make sure `FRONTEND_ORIGINS` includes your Vercel frontend URL.
+
+## Deployment on Vercel
+
+This backend already supports the Vercel function entry point through `api/index.js`.
+
+If you deploy this folder on Vercel, keep:
+
+- `api/index.js`
+- `server.js`
+
+## Notes
+
+- The PhotoRoom route is still present in `routes/photoRoom.js` as a backup.
+- The new Hugging Face flow is the clean production path for `POST /api/remove-bg`.
+- File-size limits and MIME validation are handled before the Space call.

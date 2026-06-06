@@ -29,6 +29,12 @@ const config = {
         apiKey: cleanText(process.env.PHOTOROOM_API_KEY),
         apiBaseUrl: cleanText(process.env.PHOTOROOM_API_BASE_URL) || "https://sdk.photoroom.com/v1/segment"
     },
+    hfRemoveBg: {
+        spaceId: cleanText(process.env.HF_REMOVE_BG_SPACE_ID) || "mr-singh/bg-remover",
+        apiName: cleanText(process.env.HF_REMOVE_BG_API_NAME) || "/remove_bg",
+        token: cleanText(process.env.HF_TOKEN),
+        maxFileSizeBytes: normalizePositiveNumber(process.env.HF_REMOVE_BG_MAX_FILE_SIZE_MB, 12) * 1024 * 1024
+    },
     r2: {
         accessKey: cleanText(process.env.R2_ACCESS_KEY),
         secretKey: cleanText(process.env.R2_SECRET_KEY),
@@ -41,18 +47,20 @@ const config = {
         )
     },
     uploads: {
-        maxFileSizeBytes: normalizePositiveNumber(process.env.UPLOAD_MAX_FILE_SIZE_MB, 50) * 1024 * 1024,
+        maxFileSizeBytes: normalizePositiveNumber(process.env.UPLOAD_MAX_FILE_SIZE_MB, 500) * 1024 * 1024,
         maxPreviewSizeBytes: normalizePositiveNumber(process.env.UPLOAD_MAX_PREVIEW_SIZE_MB, 10) * 1024 * 1024
     },
     limits: {
-        freeLifetimeDownloads: 5,
+        freeLifetimeDownloads: -1,
         premiumWeeklyDownloads: 2,
-        premiumDurationDays: 30
+        premiumDurationDays: 15,
+        freeToolDailyLimit: 2
     },
     premiumPlan: {
-        name: cleanText(process.env.PREMIUM_PLAN_NAME) || "AJartivo Premium",
-        amountInRupees: normalizePositiveNumber(process.env.PREMIUM_PLAN_PRICE, 999)
-    }
+        name: cleanText(process.env.PREMIUM_PLAN_NAME) || "AJartivo Starter Plan",
+        amountInRupees: normalizePositiveNumber(process.env.PREMIUM_PLAN_PRICE, 149)
+    },
+    premiumPlans: buildPremiumPlans()
 };
 
 function buildFrontendOrigins(rawOrigins) {
@@ -83,7 +91,9 @@ function buildSupabaseDesignTables(rawTables) {
         })
         .filter(Boolean);
 
-    return Array.from(new Set(configuredTables.concat(defaults))).filter(Boolean);
+    // Always prefer the canonical `designs` table first so stale fallback tables
+    // cannot override the current paid/free state for the same design id.
+    return Array.from(new Set(defaults.concat(configuredTables))).filter(Boolean);
 }
 
 function loadEnvFile(filePath, options) {
@@ -170,6 +180,18 @@ function getPhotoRoomConfigurationError() {
     return "";
 }
 
+function getHfRemoveBgConfigurationError() {
+    if (!config.hfRemoveBg.spaceId) {
+        return "HF_REMOVE_BG_SPACE_ID is missing on the backend.";
+    }
+
+    if (!config.hfRemoveBg.apiName) {
+        return "HF_REMOVE_BG_API_NAME is missing on the backend.";
+    }
+
+    return "";
+}
+
 function getR2ConfigurationError() {
     if (!config.r2.accessKey) {
         return "R2_ACCESS_KEY is missing on the backend.";
@@ -206,6 +228,107 @@ function cleanTableName(value) {
 function normalizePositiveNumber(value, fallbackValue) {
     const parsed = Number(value);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallbackValue;
+}
+
+function buildPremiumPlans() {
+    return {
+        starter_149_15d: {
+            id: "starter_149_15d",
+            name: "Starter Plan",
+            amountInRupees: 149,
+            durationDays: 15,
+            monthlyDownloadLimit: 10,
+            dailyAiLimit: 2,
+            sourceAccess: "none",
+            libraryAccessPercent: 10,
+            printLayoutLimit: "very_limited",
+            toolsAccess: {
+                source_access: "none",
+                design_library_access_percent: 10,
+                background_remover: "basic",
+                image_enhancer: "basic",
+                ai_output_quality: "standard",
+                image_resizer: "limited",
+                image_converter: "limited",
+                ai_design_generator_limit: 2,
+                print_layout_pro: "very_limited",
+                processing_speed: "normal",
+                watermark: false
+            }
+        },
+        basic_299_3m: {
+            id: "basic_299_3m",
+            name: "Basic Plan",
+            amountInRupees: 299,
+            durationDays: 90,
+            monthlyDownloadLimit: 30,
+            dailyAiLimit: 5,
+            sourceAccess: "none",
+            libraryAccessPercent: 30,
+            printLayoutLimit: "limited_templates",
+            toolsAccess: {
+                source_access: "none",
+                design_library_access_percent: 30,
+                background_remover: "basic",
+                image_enhancer: "basic",
+                ai_output_quality: "standard",
+                image_resizer: "limited",
+                image_converter: "limited",
+                ai_design_generator_limit: 5,
+                print_layout_pro: "limited_templates",
+                processing_speed: "normal",
+                watermark: false
+            }
+        },
+        advanced_599_6m: {
+            id: "advanced_599_6m",
+            name: "Advanced Plan",
+            amountInRupees: 599,
+            durationDays: 180,
+            monthlyDownloadLimit: 100,
+            dailyAiLimit: 20,
+            sourceAccess: "partial",
+            libraryAccessPercent: 70,
+            printLayoutLimit: "auto_layout_hd_export",
+            toolsAccess: {
+                source_access: "partial",
+                design_library_access_percent: 70,
+                background_remover: "high_quality",
+                image_enhancer: "hd",
+                ai_output_quality: "hd",
+                image_resizer: "full",
+                image_converter: "full",
+                ai_design_generator_limit: 20,
+                print_layout_pro: "auto_layout_hd_export",
+                processing_speed: "fast",
+                watermark: false
+            }
+        },
+        ultimate_999_1y: {
+            id: "ultimate_999_1y",
+            name: "Ultimate Plan",
+            amountInRupees: 999,
+            durationDays: 365,
+            monthlyDownloadLimit: -1,
+            dailyAiLimit: -1,
+            sourceAccess: "full",
+            libraryAccessPercent: 100,
+            printLayoutLimit: "full_control_4k_export",
+            toolsAccess: {
+                source_access: "full",
+                design_library_access_percent: 100,
+                background_remover: "ultra_ai",
+                image_enhancer: "4k",
+                ai_output_quality: "4k",
+                image_resizer: "full",
+                image_converter: "full",
+                ai_design_generator_limit: -1,
+                print_layout_pro: "full_control_4k_export",
+                processing_speed: "super_fast",
+                watermark: false
+            }
+        }
+    };
 }
 
 function maskCredential(value) {
@@ -252,6 +375,7 @@ module.exports = {
     getR2ConfigurationError,
     getRazorpayConfigurationError,
     getPhotoRoomConfigurationError,
+    getHfRemoveBgConfigurationError,
     getSupabaseConfigurationError,
     hasR2Config,
     hasRazorpayConfig,

@@ -1,5 +1,6 @@
 const {
     getPhotoRoomConfigurationError,
+    getHfRemoveBgConfigurationError,
     getR2ConfigurationError,
     getRazorpayConfigurationError,
     getSupabaseConfigurationError
@@ -42,6 +43,15 @@ function requirePhotoRoomConfigured(_req, _res, next) {
     next();
 }
 
+function requireHfRemoveBgConfigured(_req, _res, next) {
+    const configError = getHfRemoveBgConfigurationError();
+    if (configError) {
+        return next(createHttpError(500, configError));
+    }
+
+    next();
+}
+
 function requirePaymentConfigured(req, res, next) {
     requireSupabaseConfigured(req, res, function (error) {
         if (error) {
@@ -55,6 +65,7 @@ function requirePaymentConfigured(req, res, next) {
 
 module.exports = {
     requirePhotoRoomConfigured,
+    requireHfRemoveBgConfigured,
     requireR2Configured,
     requirePaymentConfigured,
     requireRazorpayConfigured,
