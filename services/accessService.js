@@ -1,4 +1,4 @@
-const { cleanText, config } = require("../config");
+const { cleanText } = require("../config");
 const { getDesignById } = require("./designService");
 const { findExistingPurchase } = require("./purchaseService");
 const { ensureUserProfile } = require("./userService");
@@ -31,78 +31,79 @@ function buildDesignAccessDecision(context) {
     const userProfile = context && context.userProfile ? context.userProfile : {};
     const design = context && context.design ? context.design : {};
     const purchase = context && context.purchase ? context.purchase : null;
-
-    const isFreeDesign = design.is_free === true;
-    const isPremiumDesign = design.is_premium === true && isFreeDesign !== true;
     const premiumActive = userProfile.premium_active === true;
-    const freeRemaining = Number(userProfile.free_download_remaining || 0);
-    const weeklyRemaining = Number(userProfile.weekly_premium_remaining || 0);
-    const canBuy = Number(design.amount_in_paise || 0) > 0;
+    const planRemaining = Number(userProfile.downloads_remaining_month || userProfile.weekly_premium_remaining || 0);
+    const planLimit = Number(
+        userProfile.monthly_download_limit ||
+        userProfile.weekly_premium_download_limit ||
+        userProfile.premium_download_limit ||
+        0
+    );
+    const canBuy = design.is_free === true ? false : Number(design.amount_in_paise || 0) > 0;
+
+    if (userProfile.is_banned === true) {
+        return createAccessDecision({
+            allowed: false,
+            grantType: "none",
+            status: "banned",
+            message: "This account is currently banned from downloads.",
+            canBuy: false,
+            canUpgrade: false,
+            remainingDownloads: 0
+        });
+    }
+
+    if (design.is_free === true) {
+        return createAccessDecision({
+            allowed: true,
+            grantType: "free_design",
+            status: "free",
+            message: "Free design ready to download.",
+            canBuy: false,
+            canUpgrade: premiumActive !== true,
+            freeRemaining: Number(userProfile.free_download_remaining),
+            planRemaining: planRemaining
+        });
+    }
 
     if (purchase) {
         return createAccessDecision({
             allowed: true,
             grantType: "purchased",
-            status: "unlocked",
-            message: "Purchase confirmed. This design is available in your account.",
+            status: "purchased",
+            message: "Purchase confirmed. This design is unlocked for your account.",
             canBuy: false,
             canUpgrade: premiumActive !== true,
-            freeRemaining: freeRemaining,
-            weeklyRemaining: weeklyRemaining
+            freeRemaining: Number(userProfile.free_download_remaining),
+            planRemaining: planRemaining
         });
     }
 
-    if (isFreeDesign) {
+    if (premiumActive === true && (planLimit < 0 || planRemaining > 0)) {
         return createAccessDecision({
             allowed: true,
-            grantType: "free_login",
-            status: premiumActive ? "premium" : "free",
-            message: premiumActive
-                ? "Premium Active: Free designs download instantly after login."
-                : "Free design unlocked. Logged-in members can download instantly.",
-            canBuy: false,
-            canUpgrade: false,
-            freeRemaining: freeRemaining,
-            weeklyRemaining: weeklyRemaining
-        });
-    }
-
-    if (premiumActive && isPremiumDesign && weeklyRemaining > 0) {
-        return createAccessDecision({
-            allowed: true,
-            grantType: "premium_weekly",
+            grantType: "premium_plan",
             status: "premium",
-            message: `Premium Active: Unlimited downloads. You have ${weeklyRemaining} out of ${config.limits.premiumWeeklyDownloads} premium downloads remaining this week.`,
+            message: planLimit < 0
+                ? `${cleanText(userProfile.active_plan_name) || "Premium"} gives you unlimited premium downloads.`
+                : `${cleanText(userProfile.active_plan_name) || "Premium"} gives you ${planRemaining} premium downloads remaining this month.`,
             canBuy: canBuy,
             canUpgrade: false,
-            freeRemaining: freeRemaining,
-            weeklyRemaining: weeklyRemaining
+            freeRemaining: Number(userProfile.free_download_remaining),
+            planRemaining: planRemaining
         });
     }
 
-    if (premiumActive && isPremiumDesign && weeklyRemaining <= 0) {
+    if (premiumActive === true && planLimit >= 0 && planRemaining <= 0) {
         return createAccessDecision({
             allowed: false,
             grantType: "none",
-            status: "weekly_limit_reached",
-            message: `Premium Active: Unlimited downloads. You have 0 out of ${config.limits.premiumWeeklyDownloads} premium downloads remaining this week.`,
+            status: "premium_limit_reached",
+            message: "Your premium download limit for this month has been reached. Buy this design or wait for the next cycle.",
             canBuy: canBuy,
             canUpgrade: false,
-            freeRemaining: freeRemaining,
-            weeklyRemaining: weeklyRemaining
-        });
-    }
-
-    if (isPremiumDesign) {
-        return createAccessDecision({
-            allowed: false,
-            grantType: "none",
-            status: "premium_design_locked",
-            message: `You have ${freeRemaining} out of ${config.limits.freeLifetimeDownloads} free downloads remaining. Upgrade to Premium or buy this design to continue.`,
-            canBuy: canBuy,
-            canUpgrade: true,
-            freeRemaining: freeRemaining,
-            weeklyRemaining: weeklyRemaining
+            freeRemaining: Number(userProfile.free_download_remaining),
+            planRemaining: 0
         });
     }
 
@@ -110,24 +111,28 @@ function buildDesignAccessDecision(context) {
         allowed: false,
         grantType: "none",
         status: "purchase_required",
-        message: "This design requires an individual purchase before download.",
+        message: "Buy this design or upgrade to an active premium plan to continue.",
         canBuy: canBuy,
-        canUpgrade: premiumActive !== true,
-        freeRemaining: freeRemaining,
-        weeklyRemaining: weeklyRemaining
+        canUpgrade: true,
+        freeRemaining: Number(userProfile.free_download_remaining),
+        planRemaining: planRemaining
     });
 }
 
 function createAccessDecision(options) {
     const decision = options || {};
+    const freeRemaining = Number(decision.freeRemaining);
+    const planRemaining = Number(decision.planRemaining);
 
     return {
         allowed: decision.allowed === true,
         grant_type: cleanText(decision.grantType),
         status: cleanText(decision.status),
         message: cleanText(decision.message),
-        free_download_remaining: Number(decision.freeRemaining || 0),
-        weekly_premium_remaining: Number(decision.weeklyRemaining || 0),
+        remaining_downloads: Number.isFinite(planRemaining) ? planRemaining : 0,
+        free_download_remaining: Number.isFinite(freeRemaining) ? freeRemaining : -1,
+        monthly_download_remaining: Number.isFinite(planRemaining) ? planRemaining : 0,
+        weekly_premium_remaining: Number.isFinite(planRemaining) ? planRemaining : 0,
         can_buy: decision.canBuy === true,
         can_upgrade: decision.canUpgrade === true
     };

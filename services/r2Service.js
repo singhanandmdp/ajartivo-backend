@@ -1,5 +1,4 @@
 const path = require("path");
-const { randomUUID } = require("crypto");
 
 const { PutObjectCommand, S3Client } = require("@aws-sdk/client-s3");
 
@@ -7,6 +6,7 @@ const { cleanText, config } = require("../config");
 
 const designExtensions = new Set([".png", ".jpg", ".jpeg", ".zip", ".psd", ".ai", ".cdr"]);
 const previewExtensions = new Set([".png", ".jpg", ".jpeg", ".webp"]);
+const avatarExtensions = new Set([".png", ".jpg", ".jpeg", ".webp"]);
 
 let r2Client = null;
 
@@ -64,17 +64,32 @@ function inferCategory(fileName) {
 
 function isAllowedUploadExtension(fileName, uploadKind) {
     const extension = path.extname(cleanFileName(fileName)).toLowerCase();
-    const allowedExtensions = uploadKind === "preview" ? previewExtensions : designExtensions;
+    const allowedExtensions = uploadKind === "preview"
+        ? previewExtensions
+        : uploadKind === "avatar"
+        ? avatarExtensions
+        : designExtensions;
     return allowedExtensions.has(extension);
 }
 
 function cleanUploadKind(value) {
-    return cleanText(value).toLowerCase() === "preview" ? "preview" : "design";
+    const normalized = cleanText(value).toLowerCase();
+    if (normalized === "preview") {
+        return "preview";
+    }
+    if (normalized === "avatar") {
+        return "avatar";
+    }
+    return "design";
 }
 
 function cleanFileName(value) {
     const normalized = path.basename(cleanText(value) || `upload-${Date.now()}`);
-    return normalized.replace(/[^\w.\- ]+/g, "-").slice(0, 120) || `upload-${Date.now()}`;
+    const extension = path.extname(normalized).toLowerCase();
+    const baseName = path.basename(normalized, extension);
+    const slug = slugify(baseName);
+    const safeBase = slug || `upload-${Date.now()}`;
+    return `${safeBase}${extension}`.slice(0, 120) || `upload-${Date.now()}`;
 }
 
 function cleanContentType(value, fileName, uploadKind) {
@@ -95,20 +110,34 @@ function cleanContentType(value, fileName, uploadKind) {
         ".cdr": "application/octet-stream"
     };
 
-    return defaultTypes[extension] || (uploadKind === "preview" ? "image/png" : "application/octet-stream");
+    return defaultTypes[extension] || (uploadKind === "design" ? "application/octet-stream" : "image/png");
 }
 
 function buildStorageKey(uploadKind, fileName) {
-    const extension = path.extname(cleanFileName(fileName)).toLowerCase();
+    const sanitizedFileName = cleanFileName(fileName);
+    const extension = path.extname(sanitizedFileName).toLowerCase();
+    const baseName = path.basename(sanitizedFileName, extension) || `upload-${Date.now()}`;
     const now = new Date();
     const year = String(now.getUTCFullYear());
     const month = String(now.getUTCMonth() + 1).padStart(2, "0");
     return [
-        uploadKind === "preview" ? "preview" : "designs",
+        uploadKind === "preview"
+            ? "preview"
+            : uploadKind === "avatar"
+            ? "avatars"
+            : "designs",
         year,
         month,
-        `${Date.now()}-${randomUUID()}${extension}`
+        `${baseName}${extension}`
     ].join("/");
+}
+
+function slugify(value) {
+    return String(value || "")
+        .toLowerCase()
+        .replace(/['"]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
 }
 
 function buildPublicUrl(key) {

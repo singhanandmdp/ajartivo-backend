@@ -57,6 +57,9 @@ async function removeBackgroundViaSpace(upload) {
         });
     });
 
+    console.log("HF RESULT:");
+    console.log(JSON.stringify(prediction, null, 2));
+
     return normalizePredictionResult(prediction);
 }
 

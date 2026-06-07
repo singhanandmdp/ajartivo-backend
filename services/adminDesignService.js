@@ -4,7 +4,8 @@ const { getSupabaseAdminClient } = require("../supabaseClient");
 
 async function listLatestDesigns(limit) {
     const supabase = getSupabaseAdminClient();
-    const maxItems = Math.min(50, Math.max(1, Number(limit || 8)));
+    const requestedLimit = Number(limit || 8);
+    const maxItems = Math.min(1000, Math.max(1, Number.isFinite(requestedLimit) ? requestedLimit : 8));
 
     for (const tableName of config.supabase.designTables) {
         const result = await supabase
@@ -36,6 +37,7 @@ async function listLatestDesigns(limit) {
 async function saveDesignRecord(payload) {
     const normalized = normalizeCreatePayload(payload);
     const supabase = getSupabaseAdminClient();
+    normalized.slug = await resolveUniqueSlug(supabase, normalized.slug || normalized.title);
     let lastError = null;
 
     for (const tableName of config.supabase.designTables) {
@@ -79,7 +81,8 @@ function normalizeCreatePayload(payload) {
     const category = cleanText(payload && payload.category).toUpperCase() || "FILE";
     const description = cleanText(payload && payload.description);
     const tags = normalizeTags(payload && payload.tags, title);
-    const isPremium = payload && payload.is_premium === true;
+    const isPremium = price > 0;
+    const slug = normalizeSlug(payload && payload.slug, title);
 
     if (!title) {
         throw createHttpError(400, "Title is required.");
@@ -95,6 +98,7 @@ function normalizeCreatePayload(payload) {
 
     return {
         title: title.slice(0, 160),
+        slug: slug,
         price: price,
         image_url: imageUrl,
         file_url: fileUrl,
@@ -102,18 +106,49 @@ function normalizeCreatePayload(payload) {
         description: description || buildDefaultDescription(),
         tags: tags,
         is_premium: isPremium,
+        is_free: price <= 0,
         created_at: new Date().toISOString()
     };
+}
+
+async function resolveUniqueSlug(supabase, value) {
+    const baseSlug = slugify(cleanText(value)) || "design";
+
+    try {
+        const result = await supabase.from("designs").select("id,slug,title");
+        if (result.error || !Array.isArray(result.data)) {
+            return baseSlug;
+        }
+
+        const existingSlugs = new Set(
+            result.data
+                .map(function (item) {
+                    return slugify(cleanText(item && (item.slug || item.title || item.name)));
+                })
+                .filter(Boolean)
+        );
+
+        let nextSlug = baseSlug;
+        let counter = 1;
+        while (existingSlugs.has(nextSlug)) {
+            nextSlug = `${baseSlug}-${counter}`;
+            counter += 1;
+        }
+
+        return nextSlug;
+    } catch (_error) {
+        return baseSlug;
+    }
 }
 
 function buildInsertPayloads(payload) {
     return [
         {
             title: payload.title,
+            slug: payload.slug,
             price: payload.price,
             image_url: payload.image_url,
             file_url: payload.file_url,
-            is_premium: payload.is_premium,
             category: payload.category,
             description: payload.description,
             tags: payload.tags,
@@ -121,8 +156,9 @@ function buildInsertPayloads(payload) {
             image: payload.image_url,
             preview_url: payload.image_url,
             download_link: payload.file_url,
-            is_paid: payload.price > 0 || payload.is_premium === true,
-            is_free: payload.price <= 0 && payload.is_premium !== true
+            is_premium: payload.price > 0,
+            is_paid: payload.price > 0,
+            is_free: payload.price <= 0
         },
         {
             title: payload.title,
@@ -130,23 +166,24 @@ function buildInsertPayloads(payload) {
             image: payload.image_url,
             preview_url: payload.image_url,
             download_link: payload.file_url,
-            is_premium: payload.is_premium,
+            is_premium: payload.price > 0,
             category: payload.category,
             description: payload.description,
             tags: payload.tags,
             created_at: payload.created_at,
-            is_paid: payload.price > 0 || payload.is_premium === true,
-            is_free: payload.price <= 0 && payload.is_premium !== true
+            is_paid: payload.price > 0,
+            is_free: payload.price <= 0
         },
         {
             title: payload.title,
             price: payload.price,
             image: payload.image_url,
             download_link: payload.file_url,
-            is_premium: payload.is_premium,
+            is_premium: payload.price > 0,
             description: payload.description,
             tags: payload.tags,
-            is_paid: payload.price > 0 || payload.is_premium === true,
+            is_paid: payload.price > 0,
+            is_free: payload.price <= 0,
             created_at: payload.created_at
         }
     ];
@@ -154,17 +191,27 @@ function buildInsertPayloads(payload) {
 
 function normalizeDesignRecord(record, tableName) {
     const item = record || {};
+    const rawPrice = item.price;
+    const hasExplicitPrice = rawPrice !== null && typeof rawPrice !== "undefined" && String(rawPrice).trim() !== "";
+    const normalizedPrice = normalizePrice(item.price);
+    const slug = normalizeSlug(item.slug, item.title || item.name);
+    const isPaid = hasExplicitPrice
+        ? normalizedPrice > 0
+        : item.is_premium === true || item.is_paid === true || normalizedPrice > 0;
     return {
         id: String(item.id || "").trim(),
         source_table: cleanText(tableName),
         title: cleanText(item.title || item.name) || "Untitled Design",
-        price: normalizePrice(item.price),
+        slug: slug,
+        price: normalizedPrice,
         description: cleanText(item.description),
         image_url: cleanText(item.image_url || item.preview_url || item.previewUrl || item.image),
         file_url: cleanText(item.file_url || item.download_link || item.downloadUrl || item.download),
         tags: normalizeTags(item.tags, item.title || item.name),
         category: cleanText(item.category).toUpperCase() || "FILE",
-        is_premium: item.is_premium === true || item.is_paid === true,
+        is_free: isPaid ? false : (hasExplicitPrice ? normalizedPrice <= 0 : item.is_free === true || (item.is_premium !== true && item.is_paid !== true)),
+        is_premium: isPaid,
+        is_paid: isPaid,
         created_at: cleanText(item.created_at) || new Date().toISOString()
     };
 }
@@ -221,6 +268,18 @@ function normalizeTags(value, fallbackTitle) {
 
     const fallback = cleanText(fallbackTitle);
     return fallback ? [fallback] : [];
+}
+
+function normalizeSlug(value, fallbackTitle) {
+    return slugify(cleanText(value) || cleanText(fallbackTitle)) || slugify(cleanText(fallbackTitle)) || "design";
+}
+
+function slugify(value) {
+    return String(value || "")
+        .toLowerCase()
+        .replace(/['"]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
 }
 
 function buildDefaultDescription() {

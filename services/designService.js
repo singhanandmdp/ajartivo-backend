@@ -10,7 +10,9 @@ const {
 const { getSupabaseAdminClient } = require("../supabaseClient");
 const { createHttpError } = require("../utils/http");
 
-const DESIGN_TABLES = ["designs"];
+const DESIGN_TABLES = Array.isArray(config.supabase.designTables) && config.supabase.designTables.length
+    ? config.supabase.designTables
+    : ["designs"];
 
 async function getDesignById(designId) {
     const normalizedId = cleanText(designId);
@@ -45,22 +47,29 @@ async function getDesignById(designId) {
 
 function normalizeDesignRecord(record, sourceTable) {
     const design = record || {};
+    const rawPrice = design.price;
+    const hasExplicitPrice = rawPrice !== null && typeof rawPrice !== "undefined" && String(rawPrice).trim() !== "";
     const price = Number(design.price || 0);
     const normalizedPrice = Number.isFinite(price) ? price : 0;
-    const isFree = design.is_free === true || normalizedPrice <= 0 && design.is_premium !== true && design.is_paid !== true;
-    const isPremium = design.is_premium === true || (isFree !== true && (design.is_paid === true || normalizedPrice > 0));
-    const paid = isPremium === true || normalizedPrice > 0;
+    const slug = normalizeSlug(design.slug, design.title || design.name);
+    const paid = hasExplicitPrice
+        ? normalizedPrice > 0
+        : design.is_premium === true || design.is_paid === true || normalizedPrice > 0;
+    const isFree = paid ? false : (hasExplicitPrice ? normalizedPrice <= 0 : design.is_free === true || (design.is_premium !== true && design.is_paid !== true));
 
     return {
         ...design,
         id: cleanText(design.id),
         source_table: cleanText(sourceTable) || "designs",
         title: cleanText(design.title || design.name) || "AJartivo Design",
+        slug: slug,
         description: cleanText(design.description),
         price: normalizedPrice,
         is_free: isFree,
-        is_premium: isPremium,
+        is_premium: paid,
         is_paid: paid,
+        category: cleanText(design.category).toUpperCase(),
+        image_url: cleanText(design.image_url || design.preview_url || design.image),
         download_link: cleanText(design.download_link || design.download || design.file_url),
         downloads: Number(design.downloads || 0) || 0,
         amount_in_paise: Math.round(Math.max(0, normalizedPrice) * 100)
@@ -93,6 +102,36 @@ async function incrementDesignDownloads(designOrId) {
     if (error) {
         throw error;
     }
+}
+
+async function incrementDesignViews(designOrId) {
+    const design = typeof designOrId === "object" && designOrId
+        ? designOrId
+        : await getDesignById(designOrId);
+
+    if (!design || !design.id) {
+        return null;
+    }
+
+    const supabase = getSupabaseAdminClient();
+    const nextValue = Number(design.views || 0) + 1;
+    const tableName = cleanText(design.source_table) || "designs";
+
+    const { data, error } = await supabase
+        .from(tableName)
+        .update({ views: nextValue })
+        .eq("id", design.id)
+        .select("*")
+        .maybeSingle();
+
+    if (error) {
+        throw error;
+    }
+
+    return data ? normalizeDesignRecord(data, tableName) : {
+        ...design,
+        views: nextValue
+    };
 }
 
 async function sendProtectedFile(res, design) {
@@ -164,6 +203,18 @@ function isMissingRelationError(error) {
     const message = cleanText(error && (error.message || error.details)).toLowerCase();
 
     return code === "42P01" || (message.includes("relation") && message.includes("does not exist"));
+}
+
+function normalizeSlug(value, fallbackTitle) {
+    return slugify(cleanText(value) || cleanText(fallbackTitle)) || slugify(cleanText(fallbackTitle)) || "design";
+}
+
+function slugify(value) {
+    return String(value || "")
+        .toLowerCase()
+        .replace(/['"]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
 }
 
 async function fetchRemoteDownloadFile(downloadLink) {
@@ -260,6 +311,7 @@ module.exports = {
     buildDownloadFileName,
     getDesignById,
     incrementDesignDownloads,
+    incrementDesignViews,
     isPaidDesign,
     sendProtectedFile
 };
