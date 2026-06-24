@@ -1,4 +1,4 @@
-const { createHttpError } = require("../utils/http");
+﻿const { createHttpError } = require("../utils/http");
 const { cleanText, config, isHttpUrl } = require("../config");
 const { getSupabaseAdminClient } = require("../supabaseClient");
 
@@ -76,8 +76,8 @@ async function saveDesignRecord(payload) {
 function normalizeCreatePayload(payload) {
     const title = cleanText(payload && payload.title);
     const price = normalizePrice(payload && payload.price);
-    const imageUrl = cleanText(payload && payload.image_url);
-    const fileUrl = cleanText(payload && payload.file_url);
+    const imageUrl = cleanText(payload && (payload.image_url || payload.preview_url || payload.image || payload.previewUrl));
+    const fileUrl = cleanText(payload && (payload.file_url || payload.download_link || payload.download_url || payload.downloadUrl || payload.download));
     const category = cleanText(payload && payload.category).toUpperCase() || "FILE";
     const description = cleanText(payload && payload.description);
     const tags = normalizeTags(payload && payload.tags, title);
@@ -148,14 +148,12 @@ function buildInsertPayloads(payload) {
             slug: payload.slug,
             price: payload.price,
             image_url: payload.image_url,
-            file_url: payload.file_url,
+            download_link: payload.download_link || payload.file_url,
             category: payload.category,
             description: payload.description,
             tags: payload.tags,
             created_at: payload.created_at,
             image: payload.image_url,
-            preview_url: payload.image_url,
-            download_link: payload.file_url,
             is_premium: payload.price > 0,
             is_paid: payload.price > 0,
             is_free: payload.price <= 0
@@ -164,7 +162,6 @@ function buildInsertPayloads(payload) {
             title: payload.title,
             price: payload.price,
             image: payload.image_url,
-            preview_url: payload.image_url,
             download_link: payload.file_url,
             is_premium: payload.price > 0,
             category: payload.category,
@@ -205,8 +202,8 @@ function normalizeDesignRecord(record, tableName) {
         slug: slug,
         price: normalizedPrice,
         description: cleanText(item.description),
-        image_url: cleanText(item.image_url || item.preview_url || item.previewUrl || item.image),
-        file_url: cleanText(item.file_url || item.download_link || item.downloadUrl || item.download),
+        image_url: cleanText(item.image_url || item.image),
+        download_link: cleanText(item.download_link || item.download || item.downloadUrl || item.file_url),
         tags: normalizeTags(item.tags, item.title || item.name),
         category: cleanText(item.category).toUpperCase() || "FILE",
         is_free: isPaid ? false : (hasExplicitPrice ? normalizedPrice <= 0 : item.is_free === true || (item.is_premium !== true && item.is_paid !== true)),
@@ -291,3 +288,4 @@ module.exports = {
     normalizeDesignRecord,
     saveDesignRecord
 };
+

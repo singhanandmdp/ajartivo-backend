@@ -1,4 +1,4 @@
-const fs = require("fs");
+﻿const fs = require("fs");
 const path = require("path");
 
 const {
@@ -69,9 +69,9 @@ function normalizeDesignRecord(record, sourceTable) {
         is_premium: paid,
         is_paid: paid,
         category: cleanText(design.category).toUpperCase(),
-        image_url: cleanText(design.image_url || design.preview_url || design.image),
-        download_link: cleanText(design.download_link || design.download || design.file_url),
-        downloads: Number(design.downloads || 0) || 0,
+        image_url: cleanText(design.image_url || design.image),
+        download_link: cleanText(design.download_link || design.download || design.downloadUrl || design.file_url),
+downloads: Number(design.downloads || 0) || 0,
         amount_in_paise: Math.round(Math.max(0, normalizedPrice) * 100)
     };
 }
@@ -315,3 +315,4 @@ module.exports = {
     isPaidDesign,
     sendProtectedFile
 };
+

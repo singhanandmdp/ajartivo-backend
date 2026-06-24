@@ -3,10 +3,13 @@ const express = require("express");
 
 const { config, maskCredential } = require("./config");
 const adminRoutes = require("./routes/admin");
+const imageConverterRoutes = require("./routes/imageConverter");
 const removeBgRoutes = require("./routes/removeBg");
 const photoRoomRoutes = require("./routes/photoRoom");
 const downloadRoutes = require("./routes/download");
 const paymentRoutes = require("./routes/payment");
+const printLayoutRoutes = require("./routes/printLayout");
+const platformRoutes = require("./routes/platform");
 const { errorHandler, notFoundHandler } = require("./utils/http");
 
 const app = express();
@@ -40,9 +43,12 @@ app.get("/health", function (_req, res) {
 
 app.use(paymentRoutes);
 app.use(downloadRoutes);
+app.use(imageConverterRoutes);
 app.use(removeBgRoutes);
 app.use(photoRoomRoutes);
+app.use(printLayoutRoutes);
 app.use(adminRoutes);
+app.use(platformRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
