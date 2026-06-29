@@ -233,6 +233,7 @@ router.post(
 
         const savedRecord = await saveDesignRecord({
             title: title,
+            slug: slug,
             price: price,
             image_url: imageUrl,
             download_link: fileUrl,
