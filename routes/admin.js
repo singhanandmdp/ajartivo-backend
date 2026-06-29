@@ -207,6 +207,7 @@ router.post(
     asyncHandler(async function (req, res) {
         const payload = req.body || {};
         const title = cleanText(payload.title);
+        const slug = cleanText(payload.slug) || title;
         const price = normalizePrice(payload.price);
         const imageUrl = cleanText(payload.image_url || payload.preview_url || payload.image || payload.previewUrl);
         const fileUrl = cleanText(payload.file_url || payload.download_link || payload.download_url || payload.downloadUrl || payload.download);
