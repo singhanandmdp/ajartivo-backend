@@ -11,6 +11,7 @@ const paymentRoutes = require("./routes/payment");
 const printLayoutRoutes = require("./routes/printLayout");
 const platformRoutes = require("./routes/platform");
 const { errorHandler, notFoundHandler } = require("./utils/http");
+const sitemapRoutes = require("./routes/sitemap");
 
 const app = express();
 const corsOptions = {
@@ -49,6 +50,7 @@ app.use(photoRoomRoutes);
 app.use(printLayoutRoutes);
 app.use(adminRoutes);
 app.use(platformRoutes);
+app.use(sitemapRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
