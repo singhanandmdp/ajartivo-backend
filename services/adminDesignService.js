@@ -38,10 +38,12 @@ async function saveDesignRecord(payload) {
     const normalized = normalizeCreatePayload(payload);
     const supabase = getSupabaseAdminClient();
     normalized.slug = await resolveUniqueSlug(supabase, normalized.slug || normalized.title);
+    console.log("SLUG DEBUG:", normalized.slug, normalized.title);
     let lastError = null;
 
     for (const tableName of config.supabase.designTables) {
         for (const record of buildInsertPayloads(normalized)) {
+            console.log("INSERT RECORD:", record);
             const result = await supabase
                 .from(tableName)
                 .insert(record)
