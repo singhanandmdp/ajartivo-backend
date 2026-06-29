@@ -160,8 +160,8 @@ function buildInsertPayloads(payload) {
         },
         {
             title: payload.title,
-            price: payload.price,
             slug: payload.slug,
+            price: payload.price,
             image: payload.image_url,
             download_link: payload.file_url,
             is_premium: payload.price > 0,
