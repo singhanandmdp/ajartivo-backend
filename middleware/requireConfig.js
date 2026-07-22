@@ -1,0 +1,73 @@
+const {
+    getPhotoRoomConfigurationError,
+    getHfRemoveBgConfigurationError,
+    getR2ConfigurationError,
+    getRazorpayConfigurationError,
+    getSupabaseConfigurationError
+} = require("../config");
+const { createHttpError } = require("../utils/http");
+
+function requireSupabaseConfigured(_req, _res, next) {
+    const configError = getSupabaseConfigurationError();
+    if (configError) {
+        return next(createHttpError(500, configError));
+    }
+
+    next();
+}
+
+function requireRazorpayConfigured(_req, _res, next) {
+    const configError = getRazorpayConfigurationError();
+    if (configError) {
+        return next(createHttpError(500, configError));
+    }
+
+    next();
+}
+
+function requireR2Configured(_req, _res, next) {
+    const configError = getR2ConfigurationError();
+    if (configError) {
+        return next(createHttpError(500, configError));
+    }
+
+    next();
+}
+
+function requirePhotoRoomConfigured(_req, _res, next) {
+    const configError = getPhotoRoomConfigurationError();
+    if (configError) {
+        return next(createHttpError(500, configError));
+    }
+
+    next();
+}
+
+function requireHfRemoveBgConfigured(_req, _res, next) {
+    const configError = getHfRemoveBgConfigurationError();
+    if (configError) {
+        return next(createHttpError(500, configError));
+    }
+
+    next();
+}
+
+function requirePaymentConfigured(req, res, next) {
+    requireSupabaseConfigured(req, res, function (error) {
+        if (error) {
+            next(error);
+            return;
+        }
+
+        requireRazorpayConfigured(req, res, next);
+    });
+}
+
+module.exports = {
+    requirePhotoRoomConfigured,
+    requireHfRemoveBgConfigured,
+    requireR2Configured,
+    requirePaymentConfigured,
+    requireRazorpayConfigured,
+    requireSupabaseConfigured
+};
